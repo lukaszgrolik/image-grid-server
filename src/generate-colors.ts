@@ -8,46 +8,97 @@ import * as cors from 'cors';
 import * as colorthief from 'colorthief';
 // import * as vibrant from 'node-vibrant';
 import vibrant = require('node-vibrant');
+import * as VibrantTypes from '@vibrant/types';
 
 import { SystemPath } from './system-path';
+import { FileColorsData, VibrantColorObj } from './types';
+import { fetchConfig, Project } from './config';
 
-const imagesFolder = new SystemPath(`C:\\Users\\lukasz\\Desktop\\colorthief-test`);
 
-const data: {path: string; palette: ([number, number, number] | undefined)[]}[] = [];
+const projects = fetchConfig();
+console.log('projects', projects)
 
-; (async () => {
+interface GetColorDataOpts {
+    basePath: string;
+    onFileProcessed: (file: string, progress: number) => void;
+}
 
-    const extString = ['jpg', 'png'].map(e => ([e, e.toUpperCase()])).flat().join(',');
-    const filePaths = await fastGlob(`${imagesFolder.normalized}/**/*.{${extString}}`);
-    console.log('filePaths', filePaths)
-
+async function getColorData(filePaths: string[], opts: GetColorDataOpts): Promise<FileColorsData[]> {
     const colorsListsPromises = filePaths.map(async filePath => {
-        // const res = await colorthief.getColor(filePath);
-        // const res = await colorthief.getPalette(filePath, 10);
-        const res = await vibrant.from(filePath).getPalette();
+        const [res_ctColor, res_ctPalette, res_vibrant] = await Promise.all([
+            colorthief.getColor(filePath),
+            colorthief.getPalette(filePath, 10),
+            vibrant.from(filePath).getPalette(),
+        ]);
+
+        opts.onFileProcessed(filePath, filePaths.length)
+
+        const vibrantColorObj = (swatch: VibrantColorObj | null): VibrantColorObj => {
+            return {
+                hex: swatch?.hex || '',
+                rgb: swatch?.rgb || [0, 0, 0],
+                hsl: swatch?.hsl || [0, 0, 0],
+            };
+        };
 
         // console.log(`${filePath} - ${res}`);
-        console.log(`${filePath}`);
-        data.push({
-            path: filePath,
-            palette: [
-                res.Vibrant?.rgb,
-                res.Muted?.rgb,
-                res.DarkVibrant?.rgb,
-                res.DarkMuted?.rgb,
-                res.LightVibrant?.rgb,
-                res.LightMuted?.rgb,
-            ],
-        })
+        // console.log(`${filePath}`);
 
-        return res;
+        const relPath = filePath.replace(opts.basePath, '');
+
+        return {
+            path: relPath,
+            colorthief: {
+                color: res_ctColor,
+                palette: res_ctPalette
+            },
+            vibrant: {
+                vibrant: vibrantColorObj(res_vibrant.Vibrant),
+                muted: vibrantColorObj(res_vibrant.Muted),
+                darkVibrant: vibrantColorObj(res_vibrant.DarkVibrant),
+                darkMuted: vibrantColorObj(res_vibrant.DarkMuted),
+                lightVibrant: vibrantColorObj(res_vibrant.LightVibrant),
+                lightMuted: vibrantColorObj(res_vibrant.LightMuted),
+            },
+        };
     });
-    const colorsLists = await Promise.all(colorsListsPromises);
+
+    const files = await Promise.all(colorsListsPromises);
+
+    return files;
+}
+
+async function generateProjectColorsDB(project: Project, opts: {onFileProcessed: (file: string, total: number) => void}) {
+    const extString = ['jpg', 'png'].map(e => ([e, e.toUpperCase()])).flat().join(',');
+    const filePaths = await fastGlob(`${project.path}/**/*.{${extString}}`);
+    // console.log('filePaths', filePaths)
+
+    const colorsData = await getColorData(filePaths, {
+        basePath: project.path,
+        onFileProcessed: opts.onFileProcessed,
+    });
 
     // filePaths.forEach((fp, i) => {
     //     console.log(fp, colorsLists[i]);
     // });
 
-    fs.writeFileSync(path.resolve(process.cwd(), 'vibrant.json'), JSON.stringify(data));
+    await fs.promises.writeFile(project.db, JSON.stringify(colorsData));
+}
+
+;(async () => {
+
+    const promises = projects.map((p, i) => {
+        let projectFilesProcessed = 0;
+
+        return generateProjectColorsDB(p, {
+            onFileProcessed: (file, total) => {
+                projectFilesProcessed += 1;
+
+                console.log(`project ${(i + 1)}/${[projects.length]} | ${file} (${Math.round(projectFilesProcessed / total * 100)}%)`)
+            },
+        });
+    });
+
+    await Promise.all(promises);
 
 })();
