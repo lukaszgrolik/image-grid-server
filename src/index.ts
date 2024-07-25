@@ -30,15 +30,21 @@ app.get('/projects', async (req, res) => {
     res.json(projects.map(p => p.name));
 });
 
-app.get('/projects/:projectName/images', async (req, res) => {
-    const {projectName} = req.params;
+app.get('/projects/:projectName/images', async (req, res, next) => {
+    try {
 
-    const project = projects.find(p => p.name === projectName);
-    if (!project) throw new Error(`project not found: ${projectName}`);
+        const {projectName} = req.params;
 
-    const dbStr = await fs.promises.readFile(project.db, 'utf-8');
+        const project = projects.find(p => p.name === projectName);
+        if (!project) throw new Error(`project not found: ${projectName}`);
 
-    res.json(JSON.parse(dbStr));
+        const dbStr = await fs.promises.readFile(project.db, 'utf-8');
+
+        res.json(JSON.parse(dbStr));
+    }
+    catch (err) {
+        next(err);
+    }
 });
 
 app.listen(PORT, () => {

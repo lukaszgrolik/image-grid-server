@@ -23,8 +23,29 @@ interface GetColorDataOpts {
     onFileProcessed: (file: string, progress: number) => void;
 }
 
+type FileColorData = {
+    path: string,
+    colorthief: {
+        color: colorthief.Color,
+        palette: colorthief.Color[],
+    },
+    vibrant: {
+        vibrant: VibrantColorObj,
+        muted: VibrantColorObj,
+        darkVibrant: VibrantColorObj,
+        darkMuted: VibrantColorObj,
+        lightVibrant: VibrantColorObj,
+        lightMuted: VibrantColorObj,
+    },
+}
+
 async function getColorData(filePaths: string[], opts: GetColorDataOpts): Promise<FileColorsData[]> {
-    const colorsListsPromises = filePaths.map(async filePath => {
+    const files: FileColorData[] = [];
+
+    // const colorsListsPromises = filePaths.map(async filePath => {
+    for (const filePath of filePaths) {
+        console.log('processing', filePath);
+
         const [res_ctColor, res_ctPalette, res_vibrant] = await Promise.all([
             colorthief.getColor(filePath),
             colorthief.getPalette(filePath, 10),
@@ -46,7 +67,7 @@ async function getColorData(filePaths: string[], opts: GetColorDataOpts): Promis
 
         const relPath = filePath.replace(opts.basePath, '');
 
-        return {
+        const res = {
             path: relPath,
             colorthief: {
                 color: res_ctColor,
@@ -61,9 +82,12 @@ async function getColorData(filePaths: string[], opts: GetColorDataOpts): Promis
                 lightMuted: vibrantColorObj(res_vibrant.LightMuted),
             },
         };
-    });
 
-    const files = await Promise.all(colorsListsPromises);
+        files.push(res);
+    }
+    // });
+
+    // const files = await Promise.all(colorsListsPromises);
 
     return files;
 }
