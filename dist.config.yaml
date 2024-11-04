@@ -1,0 +1,7 @@
+projects:
+  animals:
+    path: C:/path/to/animals
+    db: C:/path/to/animals/image-grid.json
+  pokemon:
+    path: C:/path/to/pokemon
+    db: C:/path/to/pokemon/image-grid.json
